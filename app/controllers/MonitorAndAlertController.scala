@@ -1,6 +1,8 @@
 package controllers
 
 import cats.data.NonEmptyList
+import io.circe.Encoder
+
 import java.time.{ Instant, LocalDate, LocalDateTime, ZoneId }
 import play.api.libs.circe.Circe
 import play.api.mvc.{ AbstractController, Action, ControllerComponents, Results }
@@ -31,18 +33,43 @@ class MonitorAndAlertController @Inject()(cc: ControllerComponents) extends Abst
 }
 
 object MonitorAndAlert {
-  // todo: monitor and alert
-
   import cats.syntax.either._
+
+  import io.circe.{ Decoder, HCursor }
+  import io.circe.generic.extras._
 
   sealed trait Status
   final case object Succeeded extends Status
   final case object Failed extends Status
 
-  case class CreationDate(date: LocalDateTime)
-  //case class Event(creationDate: CreationDate, status: Status)
+  implicit val statusEncode: Encoder[Status] =
+    Encoder.encodeString.contramap[Status] { status =>
+      status match {
+        case Succeeded => "succeeded"
+        case Failed => "failed"
+      }
+    }
 
-  import io.circe.generic.extras._
+  implicit val statusDecoder: Decoder[Status] =  
+    Decoder.decodeString.emap { str =>
+      str.toLowerCase match {
+        case "succeeded" => Succeeded.asRight[String]
+        case "failed" => Failed.asRight[String]
+        case _ => "Status".asLeft[Status]
+      }
+    }
+
+  case class CreationDate(instant: Instant)
+
+  implicit val encodeCreationDate: Encoder[CreationDate] =
+    Encoder.encodeString.contramap[CreationDate](_.instant.toString)
+
+  implicit val creationDateDecoder: Decoder[CreationDate] =  
+    Decoder.decodeString.emap { str =>
+      Either.catchNonFatal(Instant.ofEpochMilli(str.toLong))
+        .map(CreationDate(_))
+        .leftMap(_ => "CreationDate")
+    }
 
   implicit val config: Configuration = Configuration.default.withSnakeCaseKeys
 
@@ -53,8 +80,10 @@ object MonitorAndAlert {
     userName: String,
     userId: String,
     sourceIp: String,
-    browser: String
-  ) // (status: Status)
+    browser: String,
+    creationDate: CreationDate,
+    status: Status
+  )
 
   type AlertOr[A] = Either[NonEmptyList[String], A]
 
@@ -62,7 +91,7 @@ object MonitorAndAlert {
   val t2 = t1.minusSeconds(30 * 60)
 
   def monitor(event: Event): AlertOr[Event] = event match {
-    case Event(_, _, _, _, _, _) => //(creationDate, Succeeded) =>
+    case Event(_, _, _, _, _, _, _, _) =>
       event.asRight[NonEmptyList[String]]
 //    case Event(creationDate, Failed) =>
 //      NonEmptyList.of(event.toString).asLeft[Event]
