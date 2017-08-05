@@ -44,23 +44,25 @@ object MonitorAndAlert {
 
   import io.circe.generic.extras._
 
-  implicit val config: Configuration = Configuration.default.withSnakeCaseKeys // .copy(
-//    transformKeys = {
-//      case "_id" => "id"
-//      case other => other
-//    }
-//  )
+  implicit val config: Configuration = Configuration.default.withSnakeCaseKeys
 
-  @ConfiguredJsonCodec case class Event(@JsonKey("_id") id: String, userName: String) // (status: Status)
+  // todo: use tags or refined types 
+  @ConfiguredJsonCodec case class Event(
+    @JsonKey("_id") eventId: String,
+    @JsonKey("_type") eventType: String,
+    userName: String,
+    userId: String,
+    sourceIp: String,
+    browser: String
+  ) // (status: Status)
 
   type AlertOr[A] = Either[NonEmptyList[String], A]
 
   val t1 = Instant.ofEpochMilli(1485344457000L)
   val t2 = t1.minusSeconds(30 * 60)
 
-
   def monitor(event: Event): AlertOr[Event] = event match {
-    case Event(_, userName) => //(creationDate, Succeeded) =>
+    case Event(_, _, _, _, _, _) => //(creationDate, Succeeded) =>
       event.asRight[NonEmptyList[String]]
 //    case Event(creationDate, Failed) =>
 //      NonEmptyList.of(event.toString).asLeft[Event]
