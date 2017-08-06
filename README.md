@@ -12,7 +12,7 @@ This service will acept events in json format
     "status": "failed"
   }
 ```
-Event storage is implemented as in memory map `(user name -> Seq[event])`. Storage should preferable be replaced with sql like storage, indexed by user name and creation date. Ideal will probably be InfluxDB, since it's optimized to work with time sensitive data.
+Event storage is implemented as in memory map `(user name -> Seq[event])`. Storage should preferable be replaced with sql like storage, because there are several scenarious for data retrival, like - by id, by type, by user name. Ideal will probably be InfluxDB, since it's optimized to work with time sensitive data.
 
 If there will be more then **10 login events that failed in speicied time period (default is 30 mins)**, alert will be printed to console.
 
