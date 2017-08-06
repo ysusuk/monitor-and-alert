@@ -1,5 +1,5 @@
 ## General
-This service will acept events in json format of the form
+This service will acept events in json format
 ```json
   {
     "_id": "event_blah",
@@ -12,9 +12,9 @@ This service will acept events in json format of the form
     "status": "failed"
   }
 ```
-Event storage is implemented as in memory map of `(userName -> Seq[Event])` from. Storage can and should be replaced with sql like storage, indexed by user name and creation date. Ideal will probably be InfluxDB, since it's optimized to work with time sensitive data.
+Event storage is implemented as in memory map `(user name -> Seq[event])`. Storage should preferable be replaced with sql like storage, indexed by user name and creation date. Ideal will probably be InfluxDB, since it's optimized to work with time sensitive data.
 
-If there will be more then *10 login events that failed in speicied time period (default is 30 mins)*, alert will be printed to console.
+If there will be more then **10 login events that failed in speicied time period (default is 30 mins)**, alert will be printed to console.
 
 ## Run
 ```shell
