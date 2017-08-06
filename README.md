@@ -27,3 +27,9 @@ curl -i -H "Content-type: application/json" -X POST http://localhost:9000/push -
   { "_id": "event_blah", "_type": "login", "user_name": "me@me.com", "user_id": "user_blah", "source_ip": "172.0.0.1", "browser": "chrome", "creation_date": "1485344457000", "status": "failed" }
 '
 ```
+
+## ToDo
+There are still a lot to do, like:
+1. Use [refined](https://github.com/fthomas/refined) for event properties
+1. Modularize, as simple as add model, repo, service packages
+1. Add another layer of abstraction for app level and hid from controller interactions with db.
