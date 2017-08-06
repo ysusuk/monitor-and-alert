@@ -2,41 +2,71 @@ package controllers
 
 import cats.data.NonEmptyList
 import io.circe.Encoder
-
-import java.time.{ Instant, LocalDate, LocalDateTime, ZoneId }
+import java.time.{ Duration, Instant, LocalDate, LocalDateTime, Period, ZoneId }
 import play.api.libs.circe.Circe
 import play.api.mvc.{ AbstractController, Action, ControllerComponents, Results }
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 
-import io.circe.syntax._
-import io.circe.generic.auto._
-
 import javax.inject._
+
+import MonitorAndAlert._
 
 class MonitorAndAlertController @Inject()(cc: ControllerComponents) extends AbstractController(cc) with Circe {
 
-  import MonitorAndAlert._
-
   def push() = Action(circe.json[Event]).async { implicit request =>
-    val body = request.body
-    println("---------------")
-    println(body)
-    
-//    val event = Event(CreationDate(LocalDateTime.ofInstant(t1, ZoneId.systemDefault())), Failed)
+    val event = request.body
+    import EventRepositoryInMemory._
 
-//    monitorAndAlert(Event())
+    for {
+      _ <- store(event)
+      events <- query(event.userName, (start, end))
+      _ = println(query(event.userName, (start, end)))
+    } yield events
 
+    // 1a store
+    // 1b store and then check (get for the user events for the last ... minutes)
+    // 2 if check >= 9
+
+    // cache
+    // store
+    // getBy userName, Period
     Future(Results.Created("blah"))
   }
 
 }
 
+import cats.syntax.either._
+
+trait EventRepository {
+  type TimePeriod = (Instant, Instant)
+  def store(event: Event): ErrorOr[Event]
+  def query(userName: String, timePeriod: TimePeriod): ErrorOr[Seq[Event]]
+}
+
+import scala.collection.mutable.{ Map => MMap }
+
+object EventRepositoryInMemory extends EventRepository {
+  lazy val repo = MMap.empty[String, Seq[Event]]
+
+  // store is optimized for use case of retriving data by user name and then filter by period
+  def store(event: Event): ErrorOr[Event] = {
+    repo += (event.userName -> (event +: repo.getOrElse(event.userName, Seq.empty[Event])))
+    event.asRight[NonEmptyList[String]]
+  }
+
+  def query(userName: String, timePeriod: TimePeriod): ErrorOr[Seq[Event]] = {
+    repo.getOrElse(userName, Seq.empty[Event]).asRight[NonEmptyList[String]]
+  }
+}
+
 object MonitorAndAlert {
-  import cats.syntax.either._
+
 
   import io.circe.{ Decoder, HCursor }
+  import io.circe.generic.auto._
   import io.circe.generic.extras._
+  import io.circe.syntax._
 
   sealed trait Status
   final case object Succeeded extends Status
@@ -85,12 +115,13 @@ object MonitorAndAlert {
     status: Status
   )
 
-  type AlertOr[A] = Either[NonEmptyList[String], A]
+  type ErrorOr[A] = Either[NonEmptyList[String], A]
 
-  val t1 = Instant.ofEpochMilli(1485344457000L)
-  val t2 = t1.minusSeconds(30 * 60)
+  val end = Instant.ofEpochMilli(1485344457000L)
+  val start = end.minus(Duration.ofMillis(30 * 60 * 1000L))
+  /// instant.isBefore(end) && end.isAfter(start) ?? Equal
 
-  def monitor(event: Event): AlertOr[Event] = event match {
+  def monitor(event: Event): ErrorOr[Event] = event match {
     case Event(_, _, _, _, _, _, _, _) =>
       event.asRight[NonEmptyList[String]]
 //    case Event(creationDate, Failed) =>
@@ -98,9 +129,8 @@ object MonitorAndAlert {
     case _ => ???
   }
 
-  def alert(alertOr: AlertOr[Event]): AlertOr[Boolean] = alertOr.fold(
+  def alert(alertOr: ErrorOr[Event]): ErrorOr[Boolean] = alertOr.fold(
     nel => {
-      println(nel.head)
       true.asRight[NonEmptyList[String]]
     },
     _ => false.asRight[NonEmptyList[String]]
