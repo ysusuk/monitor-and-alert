@@ -1,3 +1,21 @@
+## General
+This service will acept events in json format of the form
+```json
+  {
+    "_id": "event_blah",
+    "_type": "login",
+    "user_name": "me@me.com",
+    "user_id": "user_blah",
+    "source_ip": "172.0.0.1",
+    "browser": "chrome",
+    "creation_date": "1485344457000",
+    "status": "failed"
+  }
+```
+Event storage is implemented as in memory map of `(userName -> Seq[Event])` from. Storage can and should be replaced with sql like storage, indexed by user name and creation date. Ideal will probably be InfluxDB, since it's optimized to work with time sensitive data.
+
+If there will be more then *10 login events that failed in speicied time period (default is 30 mins)*, alert will be printed to console.
+
 ## Run
 ```shell
 sbt run
