@@ -32,4 +32,5 @@ curl -i -H "Content-type: application/json" -X POST http://localhost:9000/push -
 There are still a lot to do, like:
 1. Use [refined](https://github.com/fthomas/refined) for event properties
 1. Modularize, as simple as add model, repo, service packages
-1. Add another layer of abstraction for app level and hid from controller interactions with db.
+1. Add another layer of abstraction for app level and hide interactions with db from contoller
+1. Add QuickCheck to test monitor and alert functions
