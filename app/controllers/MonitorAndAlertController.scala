@@ -1,72 +1,99 @@
 package controllers
 
 import cats.data.NonEmptyList
+import cats.syntax.either._
 import io.circe.Encoder
-import java.time.{ Duration, Instant, LocalDate, LocalDateTime, Period, ZoneId }
+import java.time.{ Duration, Instant }
 import play.api.libs.circe.Circe
 import play.api.mvc.{ AbstractController, Action, ControllerComponents, Results }
+import scala.collection.mutable.{ Map => MMap }
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 
 import javax.inject._
 
-import MonitorAndAlert._
+import Base._
 
 class MonitorAndAlertController @Inject()(cc: ControllerComponents) extends AbstractController(cc) with Circe {
 
   def push() = Action(circe.json[Event]).async { implicit request =>
     val event = request.body
-    import EventRepositoryInMemory._
 
-    for {
+    import EventRepositoryInMemoryEmpty._
+    import Alert._
+
+    // start and end should be calculated in other place
+    val end = event.creationDate.instant
+    // todo: time period should be taken from config
+    val start = end.minus(Duration.ofMillis(30 * 60 * 1000L))
+
+    // todo: store and query on db should be done in other place
+    // add effect of Asynch (Future, Task, Observalbe)
+    val e = for {
       _ <- store(event)
-      events <- query(event.userName, (start, end))
-      _ = println(query(event.userName, (start, end)))
+      events <- queryBy(event.userName, Failed, (start, end))
+      _ <- alert(events)
     } yield events
 
-    // 1a store
-    // 1b store and then check (get for the user events for the last ... minutes)
-    // 2 if check >= 9
+    // here alert will be printed
+    e.leftMap(nel => println(nel.head))
 
-    // cache
-    // store
-    // getBy userName, Period
-    Future(Results.Created("blah"))
+    Future(Results.Created)
   }
 
 }
 
-import cats.syntax.either._
-
 trait EventRepository {
+  import Base._
+
   type TimePeriod = (Instant, Instant)
+
   def store(event: Event): ErrorOr[Event]
-  def query(userName: String, timePeriod: TimePeriod): ErrorOr[Seq[Event]]
+  def queryBy(userName: String, status: Status, timePeriod: TimePeriod): ErrorOr[Seq[Event]]
 }
 
-import scala.collection.mutable.{ Map => MMap }
-
-object EventRepositoryInMemory extends EventRepository {
+trait EventRepositoryInMemory extends EventRepository {
   lazy val repo = MMap.empty[String, Seq[Event]]
 
-  // store is optimized for use case of retriving data by user name and then filter by period
+  // store is optimized for use case of retriving events by user name
+  // and their filtering if they got into time period
+  // Improvments:
+  // 1. Set can be used to achive idempotancy of events (event id should be used for duplicate recognition)
+  // 2. Sorted collection (by creation date) can be used to optimize retrival/filtering
   def store(event: Event): ErrorOr[Event] = {
     repo += (event.userName -> (event +: repo.getOrElse(event.userName, Seq.empty[Event])))
     event.asRight[NonEmptyList[String]]
   }
 
-  def query(userName: String, timePeriod: TimePeriod): ErrorOr[Seq[Event]] = {
-    repo.getOrElse(userName, Seq.empty[Event]).asRight[NonEmptyList[String]]
+  def queryBy(userName: String, status: Status, timePeriod: TimePeriod): ErrorOr[Seq[Event]] = {
+     repo.getOrElse(userName, Seq.empty[Event]).filter { event =>
+
+       // exclusive start instant, inclusive end instant
+       def isInTimePeriod(creationDateInstant: Instant) = creationDateInstant.isAfter(timePeriod._1) &&
+         (creationDateInstant.isBefore(timePeriod._2) || creationDateInstant.equals(timePeriod._2))
+
+       event match {
+         case Event(_, _, _, _, _, _, creationDate, status) if isInTimePeriod(creationDate.instant) => true
+         case _ => false
+       }
+    }.asRight[NonEmptyList[String]]
   }
 }
 
-object MonitorAndAlert {
+object EventRepositoryInMemoryEmpty extends EventRepositoryInMemory
 
+// test example
+object EventRepositoryInMemoryTest extends EventRepositoryInMemory {
+  override lazy val repo = MMap.empty[String, Seq[Event]]
+}
 
+object Base {
   import io.circe.{ Decoder, HCursor }
   import io.circe.generic.auto._
   import io.circe.generic.extras._
   import io.circe.syntax._
+
+  type ErrorOr[A] = Either[NonEmptyList[String], A]
 
   sealed trait Status
   final case object Succeeded extends Status
@@ -115,27 +142,18 @@ object MonitorAndAlert {
     status: Status
   )
 
-  type ErrorOr[A] = Either[NonEmptyList[String], A]
+}
 
-  val end = Instant.ofEpochMilli(1485344457000L)
-  val start = end.minus(Duration.ofMillis(30 * 60 * 1000L))
-  /// instant.isBefore(end) && end.isAfter(start) ?? Equal
+object Alert {
+  import Base._
 
-  def monitor(event: Event): ErrorOr[Event] = event match {
-    case Event(_, _, _, _, _, _, _, _) =>
-      event.asRight[NonEmptyList[String]]
-//    case Event(creationDate, Failed) =>
-//      NonEmptyList.of(event.toString).asLeft[Event]
-    case _ => ???
-  }
+  val MAX_EVENTS_BEFORE_ALERT = 10
 
-  def alert(alertOr: ErrorOr[Event]): ErrorOr[Boolean] = alertOr.fold(
-    nel => {
-      true.asRight[NonEmptyList[String]]
-    },
-    _ => false.asRight[NonEmptyList[String]]
-  )
-
-  val monitorAndAlert = monitor _ andThen alert _
+  // alert returns Left, if it gets more then MAX_EVENTS_BEFORE_ALERT
+  def alert(events: Seq[Event]): ErrorOr[Seq[Event]] =
+    if (events.size >= MAX_EVENTS_BEFORE_ALERT)
+      NonEmptyList.one(s"!!!Alert - user failed to login more then $MAX_EVENTS_BEFORE_ALERT times").asLeft[Seq[Event]]
+    else
+      events.asRight[NonEmptyList[String]]
 
 }
