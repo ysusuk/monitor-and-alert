@@ -34,3 +34,4 @@ There are still a lot to do, like:
 1. Modularize, as simple as add model, repo, service packages
 1. Add another layer of abstraction for app level and hide interactions with db from contoller
 1. Add QuickCheck to test monitor and alert functions
+1. Move period of time to config.
